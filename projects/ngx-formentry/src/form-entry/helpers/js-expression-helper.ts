@@ -342,6 +342,149 @@ export class JsExpressionHelper {
     return gravida;
   }
 
+  calcSouthAfricanTEWS(
+    age,
+    heightCm,
+    rr,
+    hr,
+    temp,
+    bp,
+    avpu,
+    mobility,
+    trauma
+  ) {
+    function avpuScore(val) {
+      val = (val || '').toUpperCase();
+      if (val === '160282AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') return 0;
+      if (val === '162645AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') return 1; // V-Voice
+      if (val === '162644AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') return 2; // P-Pain
+      if (val === '159508AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') return 3; // U-Unresponsive
+      // if (val === "120345AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA") return ?; // C-Confused
+    }
+
+    function mobilityScore(val) {
+      if (!val) return 0;
+      val = val.toUpperCase();
+      if (val === '162751AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') return 1; //Assisted
+      if (val === '162752AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') return 2; //Stretcher/immobile
+      // if( val === "162750AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA") return ?; // Walking
+      return 0; // unknown
+    }
+
+    function determineCategory(age, heightCm) {
+      if (heightCm != null) {
+        if (heightCm < 95) return 'YOUNGER_CHILD';
+        if (heightCm <= 150) return 'OLDER_CHILD';
+        return 'ADULT';
+      }
+      if (age != null) {
+        if (age < 3) return 'YOUNGER_CHILD';
+        if (age <= 12) return 'OLDER_CHILD';
+        return 'ADULT';
+      }
+      return 'ADULT';
+    }
+
+    let score = 0;
+    const category = determineCategory(age, heightCm);
+
+    // YOUNGER CHILD (<3 years or <95cm)
+    if (category === 'YOUNGER_CHILD') {
+      // RR
+      if (rr < 20) score += 3;
+      else if (rr <= 25) score += 2;
+      else if (rr <= 39) score += 1;
+      else if (rr <= 49) score += 2;
+      else score += 3;
+
+      // HR
+      if (hr < 70) score += 3;
+      else if (hr <= 79) score += 2;
+      else if (hr <= 130) score += 0;
+      else if (hr <= 159) score += 2;
+      else score += 3;
+
+      // Temp
+      if (temp < 35) score += 3;
+      else if (temp <= 38.4) score += 0;
+      else score += 2;
+
+      score += avpuScore(avpu);
+      score += mobilityScore(mobility);
+
+      if (trauma === '1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') score += 1;
+    }
+
+    //OLDER CHILD (3–12 years or 95–150cm)
+    else if (category === 'OLDER_CHILD') {
+      if (rr < 15) score += 3;
+      else if (rr <= 16) score += 2;
+      else if (rr <= 21) score += 1;
+      else if (rr <= 26) score += 1;
+      else score += 3;
+
+      if (hr < 60) score += 3;
+      else if (hr <= 79) score += 2;
+      else if (hr <= 99) score += 1;
+      else if (hr <= 129) score += 1;
+      else score += 3;
+
+      if (temp < 35) score += 3;
+      else if (temp <= 38.4) score += 0;
+      else score += 2;
+
+      score += avpuScore(avpu);
+      score += mobilityScore(mobility);
+
+      if (trauma === '1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') score += 1;
+    }
+
+    // ADULT (>12 years or >150cm)
+    else {
+      // RR
+      if (rr < 9) score += 3;
+      else if (rr <= 14) score += 1;
+      else if (rr <= 20) score += 0;
+      else if (rr <= 29) score += 1;
+      else score += 3;
+
+      // HR
+      if (hr < 40) score += 3;
+      else if (hr <= 50) score += 1;
+      else if (hr <= 100) score += 0;
+      else if (hr <= 120) score += 1;
+      else score += 3;
+
+      // Temp
+      if (temp < 35) score += 3;
+      else if (temp <= 37) score += 0;
+      else if (temp <= 38.5) score += 1;
+      else score += 2;
+
+      // BP (adult only)
+      if (bp < 70) score += 3;
+      else if (bp <= 80) score += 2;
+      else if (bp <= 100) score += 1;
+      else if (bp <= 199) score += 0;
+      else score += 2;
+
+      score += avpuScore(avpu);
+      score += mobilityScore(mobility);
+    }
+
+    // Priority
+    let priority;
+    if (score >= 7) priority = '1882AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+    //Emergency
+    else if (score >= 5) priority = '159409AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+    //Very Urgent
+    else if (score >= 3) priority = '1883AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
+    //Urgent
+    else priority = '1115AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'; //Routine
+
+    return { score, priority, category };
+  }
+
   get helperFunctions() {
     const helper = this;
     return {
@@ -356,7 +499,8 @@ export class JsExpressionHelper {
       extractRepeatingGroupValues: helper.extractRepeatingGroupValues,
       getObsFromControlOrEncounter: helper.getObsFromControlOrEncounter,
       doesNotMatchExpression: helper.doesNotMatchExpression,
-      calcGravida: helper.calcGravida
+      calcGravida: helper.calcGravida,
+      calcSouthAfricanTEWS: helper.calcSouthAfricanTEWS
     };
   }
 }

@@ -32,6 +32,7 @@
     "@ng-select/ng-select": "^13.9.1",
     "@ngx-translate/core": "^16.0.4",
     "@openmrs/ngx-file-uploader": "next",
+    "@openmrs/ngx-formentry": "^19.0.1-pre.489",
     "core-js": "^2.6.12",
     "font-awesome": "^4.7.0",
     "jquery": "^3.7.1",

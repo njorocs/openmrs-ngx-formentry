@@ -2496,6 +2496,13 @@
   dependencies:
     tslib "^2.3.0"
 
+"@openmrs/ngx-formentry@^19.0.1-pre.489":
+  version "19.0.1-pre.489"
+  resolved "https://registry.yarnpkg.com/@openmrs/ngx-formentry/-/ngx-formentry-19.0.1-pre.489.tgz#e0f7ad877d0ba1e2e8ed7a252ebc59b68a8a370b"
+  integrity sha512-CI6c28fYuKI/zSa0fVQFu8nKzDrITNNesRA8GbD2WZawuiTheedUygI+kVmVZcQ5D+bqjd1mM4p5O36VVQbV6A==
+  dependencies:
+    tslib "^2.3.0"
+
 "@pkgjs/parseargs@^0.11.0":
   version "0.11.0"
   resolved "https://registry.yarnpkg.com/@pkgjs/parseargs/-/parseargs-0.11.0.tgz#a77ea742fab25775145434eb1d2328cf5013ac33"
