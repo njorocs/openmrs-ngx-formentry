@@ -2,6 +2,12 @@ import * as _ from 'lodash';
 import { Injectable } from '@angular/core';
 import { southEastAsiaCvdRiskTables } from './risk-dataset-table';
 
+type Category = 'YOUNGER_CHILD' | 'OLDER_CHILD' | 'ADULT' | 'UNKNOWN';
+interface TewsResult {
+  score: number;
+  priority: string;
+  category: Category;
+}
 @Injectable()
 export class JsExpressionHelper {
   calcBMI(height, weight) {
@@ -342,145 +348,179 @@ export class JsExpressionHelper {
     return gravida;
   }
 
+  // -------- Triage Early Warning Score (TEWS): South African model --------
+
   calcSouthAfricanTEWS(
-    age,
-    heightCm,
-    rr,
-    hr,
-    temp,
-    bp,
-    avpu,
-    mobility,
-    trauma
-  ) {
-    function avpuScore(val) {
-      val = (val || '').toUpperCase();
-      if (val === '160282AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') return 0;
-      if (val === '162645AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') return 1; // V-Voice
-      if (val === '162644AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') return 2; // P-Pain
-      if (val === '159508AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') return 3; // U-Unresponsive
-      // if (val === "120345AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA") return ?; // C-Confused
-    }
+    age: number | null,
+    heightCm: number | null,
+    respRate: number | null,
+    heartRate: number | null,
+    temperature: number | null,
+    systolicBP: number | null,
+    avpuLevelChild?: string | null,
+    avpuLevelAdult?: string | null,
+    mobilityChild?: string | null,
+    mobilityAdult?: string | null,
+    trauma?: string | null
+  ): TewsResult {
+    const UUID = {
+      ROUTINE: '1115AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      URGENT: '1883AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      VERY_URGENT: '159409AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      EMERGENCY: '1882AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA',
+      TRAUMA_YES: '1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'
+    };
 
-    function mobilityScore(val) {
-      if (!val) return 0;
-      val = val.toUpperCase();
-      if (val === '162751AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') return 1; //Assisted
-      if (val === '162752AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') return 2; //Stretcher/immobile
-      // if( val === "162750AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA") return ?; // Walking
-      return 0; // unknown
-    }
+    const isValid = (num: any): boolean =>
+      num !== null && num !== undefined && num !== '' && !isNaN(num);
 
-    function determineCategory(age, heightCm) {
-      if (heightCm != null) {
+    const isValidCode = (val: any): boolean =>
+      typeof val === 'string' && val.trim().length > 0;
+
+    const hasAnyInput =
+      [respRate, heartRate, temperature, systolicBP].some(isValid) ||
+      [
+        avpuLevelChild,
+        avpuLevelAdult,
+        mobilityChild,
+        mobilityAdult,
+        trauma
+      ].some(isValidCode);
+
+    if (!hasAnyInput) {
+      return {
+        score: 0,
+        priority: UUID.ROUTINE,
+        category: 'UNKNOWN'
+      };
+    }
+    // Determine patient category
+    const determineCategory = (): Category => {
+      if (isValid(heightCm)) {
         if (heightCm < 95) return 'YOUNGER_CHILD';
         if (heightCm <= 150) return 'OLDER_CHILD';
-        return 'ADULT';
-      }
-      if (age != null) {
+      } else if (isValid(age)) {
         if (age < 3) return 'YOUNGER_CHILD';
         if (age <= 12) return 'OLDER_CHILD';
-        return 'ADULT';
       }
       return 'ADULT';
-    }
+    };
 
+    const category = determineCategory();
     let score = 0;
-    const category = determineCategory(age, heightCm);
 
-    // YOUNGER CHILD (<3 years or <95cm)
-    if (category === 'YOUNGER_CHILD') {
-      // RR
-      if (rr < 20) score += 3;
-      else if (rr <= 25) score += 2;
-      else if (rr <= 39) score += 1;
-      else if (rr <= 49) score += 2;
-      else score += 3;
+    // AVPU (Alert, Voice, Pain, Unresponsive)
+    const avpuScore = (val: string | null | undefined): number => {
+      const map: Record<string, number> = {
+        '160282AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA': 0, // Alert
+        '162645AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA': 1, // Voice
+        '162644AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA': 2, // Pain
+        '120345AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA': 2, // Confused
+        '159508AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA': 3 // Unresponsive
+      };
+      return map[val ?? ''] ?? 0;
+    };
 
-      // HR
-      if (hr < 70) score += 3;
-      else if (hr <= 79) score += 2;
-      else if (hr <= 130) score += 0;
-      else if (hr <= 159) score += 2;
-      else score += 3;
+    // Mobility scoring
+    const mobilityScore = (val: string | null | undefined): number => {
+      const map: Record<string, number> = {
+        '162750AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA': 0, // Walking
+        '1115AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA': 0, // Normal for age
+        '162751AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA': 1, // Assisted
+        '162752AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA': 2, // Immobile
+        'ebdcb8b4-8089-422c-a636-f8aeb44e6eed': 2 // Unable to move
+      };
+      return map[val ?? ''] ?? 0;
+    };
 
-      // Temp
-      if (temp < 35) score += 3;
-      else if (temp <= 38.4) score += 0;
-      else score += 2;
+    // Scoring per Category
+    switch (category) {
+      case 'YOUNGER_CHILD':
+        if (isValid(respRate)) {
+          if (respRate < 20) score += 3;
+          else if (respRate <= 25) score += 2;
+          else if (respRate <= 39) score += 0;
+          else if (respRate <= 49) score += 2;
+          else score += 3;
+        }
+        if (isValid(heartRate)) {
+          if (heartRate < 70) score += 3;
+          else if (heartRate <= 79) score += 2;
+          else if (heartRate <= 130) score += 0;
+          else if (heartRate <= 159) score += 2;
+          else score += 3;
+        }
+        if (isValid(temperature)) {
+          if (temperature < 35 || temperature > 38.4) score += 2;
+        }
+        score += avpuScore(avpuLevelChild);
+        score += mobilityScore(mobilityChild);
+        if (trauma === UUID.TRAUMA_YES) score += 1;
+        break;
 
-      score += avpuScore(avpu);
-      score += mobilityScore(mobility);
+      case 'OLDER_CHILD':
+        if (isValid(respRate)) {
+          if (respRate < 15) score += 3;
+          else if (respRate <= 16) score += 2;
+          else if (respRate <= 21) score += 0;
+          else if (respRate <= 26) score += 1;
+          else score += 2;
+        }
+        if (isValid(heartRate)) {
+          if (heartRate < 60) score += 3;
+          else if (heartRate <= 79) score += 2;
+          else if (heartRate <= 99) score += 0;
+          else if (heartRate <= 129) score += 1;
+          else score += 2;
+        }
+        if (isValid(temperature)) {
+          if (temperature < 35 || temperature > 38.4) score += 2;
+        }
+        score += avpuScore(avpuLevelChild);
+        score += mobilityScore(mobilityChild);
+        if (trauma === UUID.TRAUMA_YES) score += 1;
+        break;
 
-      if (trauma === '1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') score += 1;
+      case 'ADULT':
+        if (isValid(respRate)) {
+          if (respRate < 9) score += 2;
+          else if (respRate <= 14) score += 0;
+          else if (respRate <= 20) score += 1;
+          else if (respRate <= 29) score += 2;
+          else score += 3;
+        }
+        if (isValid(heartRate)) {
+          if (heartRate < 41) score += 2;
+          else if (heartRate <= 50) score += 1;
+          else if (heartRate <= 100) score += 0;
+          else if (heartRate <= 110) score += 1;
+          else if (heartRate <= 129) score += 2;
+          else score += 3;
+        }
+        if (isValid(temperature)) {
+          if (temperature < 35 || temperature > 38.4) score += 2;
+        }
+        if (isValid(systolicBP)) {
+          if (systolicBP < 71) score += 3;
+          else if (systolicBP <= 80) score += 2;
+          else if (systolicBP <= 100) score += 1;
+          else if (systolicBP > 199) score += 2;
+        }
+        score += avpuScore(avpuLevelAdult);
+        score += mobilityScore(mobilityAdult);
+        if (trauma === UUID.TRAUMA_YES) score += 1;
+        break;
     }
 
-    //OLDER CHILD (3–12 years or 95–150cm)
-    else if (category === 'OLDER_CHILD') {
-      if (rr < 15) score += 3;
-      else if (rr <= 16) score += 2;
-      else if (rr <= 21) score += 1;
-      else if (rr <= 26) score += 1;
-      else score += 3;
-
-      if (hr < 60) score += 3;
-      else if (hr <= 79) score += 2;
-      else if (hr <= 99) score += 1;
-      else if (hr <= 129) score += 1;
-      else score += 3;
-
-      if (temp < 35) score += 3;
-      else if (temp <= 38.4) score += 0;
-      else score += 2;
-
-      score += avpuScore(avpu);
-      score += mobilityScore(mobility);
-
-      if (trauma === '1065AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA') score += 1;
-    }
-
-    // ADULT (>12 years or >150cm)
-    else {
-      // RR
-      if (rr < 9) score += 3;
-      else if (rr <= 14) score += 1;
-      else if (rr <= 20) score += 0;
-      else if (rr <= 29) score += 1;
-      else score += 3;
-
-      // HR
-      if (hr < 40) score += 3;
-      else if (hr <= 50) score += 1;
-      else if (hr <= 100) score += 0;
-      else if (hr <= 120) score += 1;
-      else score += 3;
-
-      // Temp
-      if (temp < 35) score += 3;
-      else if (temp <= 37) score += 0;
-      else if (temp <= 38.5) score += 1;
-      else score += 2;
-
-      // BP (adult only)
-      if (bp < 70) score += 3;
-      else if (bp <= 80) score += 2;
-      else if (bp <= 100) score += 1;
-      else if (bp <= 199) score += 0;
-      else score += 2;
-
-      score += avpuScore(avpu);
-      score += mobilityScore(mobility);
-    }
-
-    // Priority
-    let priority;
-    if (score >= 7) priority = '1882AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
-    //Emergency
-    else if (score >= 5) priority = '159409AAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
-    //Very Urgent
-    else if (score >= 3) priority = '1883AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
-    //Urgent
-    else priority = '1115AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA'; //Routine
+    // Priority Mapping
+    const priority =
+      score >= 7
+        ? UUID.EMERGENCY
+        : score >= 5
+        ? UUID.VERY_URGENT
+        : score >= 3
+        ? UUID.URGENT
+        : UUID.ROUTINE;
 
     return { score, priority, category };
   }
