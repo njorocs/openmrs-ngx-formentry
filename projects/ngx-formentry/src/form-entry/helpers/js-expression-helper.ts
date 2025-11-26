@@ -476,7 +476,7 @@ export class JsExpressionHelper {
         if (isValid(temperature)) {
           if (temperature < 35 || temperature > 38.4) score += 2;
         }
-        score += avpuScore(avpuLevelChild);
+        score += avpuScore(avpuLevelAdult);
         score += mobilityScore(mobilityChild);
         if (trauma === UUID.TRAUMA_YES) score += 1;
         break;
